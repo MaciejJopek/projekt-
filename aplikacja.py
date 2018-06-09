@@ -4,8 +4,9 @@ import Adafruit_DHT
 import RPi.GPIO as GPIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal,QSize
+from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal,QSize, Qt
 from PyQt5.QtGui import *
+from random import randint
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
 GPIO.setup(15, GPIO.OUT, initial=GPIO.LOW)
@@ -14,7 +15,7 @@ GPIO.setup(11, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(12, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(16, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(18, GPIO.OUT, initial=GPIO.LOW)
-from czujniki import Sensory
+#from czujniki import Sensory
 from w1thermsensor import W1ThermSensor
 
 
@@ -27,26 +28,35 @@ GPIO.setup(GPIO_ECHO, GPIO.IN)
 
 
 
-class Robot(QWidget,Sensory):
+class Robot(QWidget):
     trigger = pyqtSignal()
     trigger2 = pyqtSignal()
     def __init__(self,parent=None):
         
         super(Robot,self).__init__(parent)
-        self.sensory=Sensory()
+        GPIO.output(13,1)
+        self.p1 = GPIO.PWM(11, 100) #prawy,przod
+        self.p2 = GPIO.PWM(18, 100) #lewy przod
+        self.p3 = GPIO.PWM(12, 100) #prawy tyl
+        self.p4 = GPIO.PWM(16, 100) #lewy tyl
+        #self.sensory=Sensory()
         self.plik_temperatura = open('plik_temperatura', 'w')
         self.interfejs()
     def interfejs(self):
         self.zgoda=0
         self.setWindowTitle("Robot")#tytuł okna
-        self.setGeometry(50,50,600,500)
+        self.setGeometry(50,50,500,300)
+
+        etykieta1 = QLabel("Odleglosc od przeszkody:", self)
+        etykieta1.move(300, 50) 
         #przyciski
         self.wynikEdt = QLineEdit(self)
-        self.wynikEdt.move(300, 150)
+        self.wynikEdt.move(300, 80)
         self.wynikEdt.readonly = True
-
+        etykieta2 = QLabel("Tepmperatura otoczenia:", self)
+        etykieta2.move(300, 130)
         self.wynikEdt2 = QLineEdit(self)
-        self.wynikEdt2.move(300, 200)
+        self.wynikEdt2.move(300, 160)
         self.wynikEdt2.readonly = True
 
         reczne=QRadioButton("Sterowanie reczne",self)
@@ -57,23 +67,40 @@ class Robot(QWidget,Sensory):
         automatyczne.move(180,10)
         
         Wyjscie = QPushButton("Wyjscie",self)
-        Wyjscie.move(450,10)
+        Wyjscie.move(400,10)
         
         przod = QPushButton("przod",self)
-        przod.move(100,100)
+        przod.move(100,120)
 
         hamulec = QPushButton("hamulec",self)
-        hamulec.move(100,150)
+        hamulec.move(100,170)
 
         tyl = QPushButton("tyl",self)
-        tyl.move(100,200)
+        tyl.move(100,222)
 
         prawo = QPushButton("prawo",self)
-        prawo.move(190,150)
+        prawo.move(190,170)
 
         lewo = QPushButton("lewo",self)
-        lewo.move(10,150)
+        lewo.move(10,170)
         
+        etykieta3 = QLabel("Moc silnikow:", self)
+        etykieta3.move(10, 50)
+        self.suwak = QSlider(Qt.Horizontal)
+        self.suwak.setMinimum(0)
+        self.suwak.setMaximum(100)
+        self.lcd = QLCDNumber()
+        self.lcd.setSegmentStyle(QLCDNumber.Flat)
+        # układ poziomy (splitter) dla slajdera i lcd
+        ukladH2 = QSplitter(Qt.Horizontal, self)
+        ukladH2.addWidget(self.suwak)
+        ukladH2.addWidget(self.lcd)
+        ukladH2.setSizes((300, 100))
+
+        ukladH2.move(10,80)
+
+        self.suwak.valueChanged.connect(self.lcd.display)
+        self.suwak.valueChanged.connect(self.predkosc)
         #czujnik odleglosci
         self.threadclass= Threadclass()
         self.threadclass.start()
@@ -96,7 +123,7 @@ class Robot(QWidget,Sensory):
 
         #sterowanie klawiatura
         self.shortcut = QShortcut(QKeySequence("w"),self)
-        self.shortcut.activated.connect(self.przod)
+        self.shortcut.activated.connect(self.silnik_przod)
         self.shortcut = QShortcut(QKeySequence("a"),self)
         self.shortcut.activated.connect(self.lewo)
         self.shortcut = QShortcut(QKeySequence("d"),self)
@@ -107,10 +134,12 @@ class Robot(QWidget,Sensory):
         self.shortcut.activated.connect(self.hamulec)
         self.show()#wyswietla okno na ekranie
 
-    @pyqtSlot()    
+    @pyqtSlot()
+    def predkosc(self):
+        self.predkosc = self.suwak.value()
     def reczne(self):
         self.zgoda=0
-        self.sensory.hamulec()   
+        self.hamulec()   
     def automatyczne(self):
         self.zgoda=1
     def odleglosc(self,val):
@@ -120,23 +149,63 @@ class Robot(QWidget,Sensory):
             self.wynikEdt.setText('ponad 2 metry')
         if (self.zgoda==1):
             if (val>40):
-                self.sensory.silnik_przod()               
-            else:
-                self.sensory.lewy()
-                time.sleep(0.1)
+                self.x=2
+                self.silnik_przod()               
+            if (val<40):
+                if self.x==2:
+                    self.losowanie_zgoda=9
+                if self.x>1:
+                    self.losowanie_zgoda=5
+                    if self.losowanie_zgoda==5:
+                        self.x=randint(0,1)
+                if (self.x==0):
+                    self.lewy()
+                if (self.x==1):
+                    self.prawy()
+                time.sleep(0.1)  
     def termometr(self,temperatura):
         self.wynikEdt2.setText(str(temperatura))
         print(temperatura, file=self.plik_temperatura)
-    def przod(self):
-        self.sensory.silnik_przod()
+    def przod(self,val):
+        self.silnik_przod()
     def hamulec(self):
-        self.sensory.hamulec()
+        self.hamulec_2()
     def tyl(self):
-        self.sensory.silnik_tyl()
+        self.silnik_tyl()
     def lewo(self):
-        self.sensory.lewy()
+        self.lewy()
     def prawo(self):
-        self.sensory.prawy()
+        self.prawy()
+    def silnik_przod(self):
+        self.p3.stop()
+        self.p4.stop()
+        self.p1.start(self.predkosc)
+        self.p2.start(self.predkosc+5)
+    def silnik_tyl(self):
+        self.p1.stop()
+        self.p2.stop()
+        self.p3.start(self.predkosc)
+        self.p4.start(self.predkosc+5)
+            
+    def hamulec_2(self):
+
+        self.p1.stop()
+        self.p2.stop()
+        self.p3.stop()
+        self.p4.stop()
+
+            
+    def prawy(self):
+        self.p1.stop()
+        self.p3.stop()
+        self.p4.stop()
+        self.p2.start(self.predkosc+5)
+
+    def lewy(self):
+        self.p2.stop()
+        self.p3.stop()
+        self.p4.stop()
+        self.p1.start(self.predkosc)
     def Wyjscie(self):
         self.plik_temperatura.close()
         GPIO.cleanup()
@@ -147,7 +216,7 @@ class Threadclass(QtCore.QThread):
         super(Threadclass,self).__init__(parent)
     def run(self):
         while True:
-            time.sleep(0.4)
+            time.sleep(0.5)
             GPIO.output(7, True)
             
             time.sleep(0.00001)
@@ -165,8 +234,8 @@ class Threadclass(QtCore.QThread):
             while GPIO.input(22) == 1:
                 koniec = time.time()
             TimeElapsed = koniec - poczatek
-            val = TimeElapsed * 17150
-            self.progress_update.emit(val)
+            self.val = TimeElapsed * 17150
+            self.progress_update.emit(self.val)
             
 class Threadclass2(QtCore.QThread):
     progress_update2 = pyqtSignal(float)
@@ -174,17 +243,13 @@ class Threadclass2(QtCore.QThread):
         super(Threadclass2,self).__init__(parent)
     def run(self):
         sensor = W1ThermSensor()
-        #temp=[]
-        #x=0
-        while True:  
-            temperatura = float(sensor.get_temperature())
-            #temp.append(temperatura)
-            #x=x+1
-            #if (x>10):
-                #temp.pop(0)
-            self.progress_update2.emit(temperatura)
 
-            time.sleep(1)
+        while True:  
+            self.temperatura = float(sensor.get_temperature())
+
+            self.progress_update2.emit(self.temperatura)
+
+            time.sleep(2)
 
 
 if __name__ == '__main__':
