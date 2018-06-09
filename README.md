@@ -12,3 +12,5 @@ Do zrobienia: Całkowicie automatyczne poruszanie się robota, dodanie czujnika 
 Raport 3
 
 Zrobione: Dodano losowe wybieranie drogi przez robota ( początkowo skręcał tylko w jedą stronę). Dodatkowo możliwy jest zapis danych odebranych z czujnika temperatury do pliku w celu jego ewentualnej późniejszej analizy. Wprowadzono wysyłanie danych z termometru do serwisu Domoticz, któru umożliwia generowanie wykresów. 
+
+Dodano możliowść kontrolowania mocy samochodu, umożliwiając zmiane jego predkosci.
